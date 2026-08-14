@@ -37,6 +37,14 @@ Sensitive fields are encrypted with AES-256-GCM and saved in SwiftData. The data
 - Encrypted `.vault` backup export / import
 - Native system UI, with Liquid Glass on iOS 26 toolbars, tabs, and primary actions
 
+## Screenshots
+
+The screenshots below are from the current `main` build running on an iPhone 17 simulator with iOS 26.5.
+
+| All Passwords | Me |
+| --- | --- |
+| ![All Passwords empty state](docs/screenshots/passwords-list.jpg) | ![Me settings](docs/screenshots/me-settings.jpg) |
+
 ## Security
 
 | Area | Implementation |

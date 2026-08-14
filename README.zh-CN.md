@@ -37,6 +37,14 @@ Offline Vault 把登录信息存在本机。底部两个入口：
 - 加密导出 / 导入 `.vault` 备份
 - 系统原生界面；iOS 26 的工具栏、Tab 和主按钮使用 Liquid Glass
 
+## 截图
+
+下面的截图来自当前 `main` 版本，在 iOS 26.5 的 iPhone 17 模拟器中运行。
+
+| 所有密码 | 我的 |
+| --- | --- |
+| ![所有密码空状态](docs/screenshots/passwords-list.jpg) | ![我的设置](docs/screenshots/me-settings.jpg) |
+
 ## 安全设计
 
 | 项目 | 实现 |
