@@ -9,9 +9,9 @@ enum BiometricKind: Equatable, Sendable {
 
     var title: String {
         switch self {
-        case .none: return "生物识别"
-        case .faceID: return "Face ID"
-        case .touchID: return "Touch ID"
+        case .none: return "设备密码"
+        case .faceID: return "面容 ID"
+        case .touchID: return "触控 ID"
         case .opticID: return "Optic ID"
         }
     }
@@ -24,31 +24,46 @@ enum BiometricKind: Equatable, Sendable {
         case .opticID: return "opticid"
         }
     }
+
+    var unlockTitle: String {
+        "使用\(title)打开"
+    }
 }
 
 enum BiometricUnlock {
+    static let reason = "打开本机密码"
+
     static func availableKind() -> BiometricKind {
         let context = LAContext()
         var error: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             return .none
         }
-        switch context.biometryType {
-        case .faceID:
-            return .faceID
-        case .touchID:
-            return .touchID
-        case .opticID:
-            return .opticID
-        default:
-            return .none
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+            switch context.biometryType {
+            case .faceID:
+                return .faceID
+            case .touchID:
+                return .touchID
+            case .opticID:
+                return .opticID
+            default:
+                break
+            }
         }
+        return .none
     }
 
-    static func makeContext(reason: String) -> LAContext {
+    static func canProtectApp() -> Bool {
+        let context = LAContext()
+        var error: NSError?
+        return context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
+    }
+
+    static func makeContext() -> LAContext {
         let context = LAContext()
         context.localizedReason = reason
-        context.localizedCancelTitle = "改用主密码"
+        context.localizedCancelTitle = "取消"
         context.touchIDAuthenticationAllowableReuseDuration = 0
         return context
     }

@@ -6,7 +6,6 @@ enum AuthError: Error, Equatable, LocalizedError {
     case locked
     case incorrectPassword
     case biometricsUnavailable
-    case biometricsNotEnabled
     case biometricsFailed
     case passwordTooWeak
     case passwordMismatch
@@ -16,27 +15,25 @@ enum AuthError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .vaultNotInitialized:
-            return "尚未创建保险库"
+            return "还没有在这台 iPhone 上创建密码本"
         case .alreadyInitialized:
-            return "保险库已经存在"
+            return "这台 iPhone 上已经有密码本"
         case .locked:
-            return "保险库已锁定"
+            return "已锁定"
         case .incorrectPassword:
-            return "主密码不正确"
+            return "密码不正确"
         case .biometricsUnavailable:
-            return "此设备不支持生物识别，或尚未录入"
-        case .biometricsNotEnabled:
-            return "尚未开启生物识别解锁"
+            return "请先在系统设置里开启面容 ID，或设置设备密码"
         case .biometricsFailed:
-            return "生物识别失败，请改用主密码"
+            return "未能解锁，请再试一次"
         case .passwordTooWeak:
-            return "主密码强度不足，请使用更长或更复杂的密码"
+            return "密码强度不足"
         case .passwordMismatch:
             return "两次输入的密码不一致"
         case .configurationCorrupted:
-            return "保险库配置损坏"
+            return "本地数据无法读取"
         case .keychainFailed(let status):
-            return "钥匙串访问失败（\(status)）"
+            return "无法访问本机钥匙串（\(status)）"
         }
     }
 }

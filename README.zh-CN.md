@@ -2,13 +2,18 @@
 
 [English](README.md) · [中文](README.zh-CN.md)
 
-完全离线的原生 iOS 密码管理器。数据只存在这台设备上，不申请网络权限，也不连接任何服务器。
+只存在这台 iPhone 上的原生密码本。不联网，没有账号，也没有云。
+
+面容 ID 和 App 密码可以同时开。面容 ID 是快开，App 密码是后路。
 
 ## 这是什么
 
-Offline Vault 是一个只供本机使用的密码保险库。用主密码解锁，可选 Face ID / Touch ID。所有敏感字段在本地用 AES-256-GCM 加密后存入 SwiftData。
+Offline Vault 把登录信息存在本机。底部两个入口：
 
-主密码本身不会被保存，只用来派生加密密钥。
+- **所有密码** — 查找、查看、复制、记下
+- **我的** — 选择怎么打开 App、导出备份、清空本机数据
+
+敏感字段用 AES-256-GCM 加密后写入 SwiftData。数据密钥不会离开这台设备。面容 ID 从钥匙串取出密钥；App 密码在本地解开同一把密钥。
 
 ## 明确不做
 
@@ -20,29 +25,30 @@ Offline Vault 是一个只供本机使用的密码保险库。用主密码解锁
 
 ## 功能
 
-- 首次设置主密码，并做强度检查
-- 主密码或 Face ID / Touch ID 解锁
-- 进入后台立即锁定，前台无操作超时锁定（默认 5 分钟）
-- 密码条目的增删改查
-- 按标题、用户名、备注搜索，收藏置顶
-- 内置密码生成器
-- 复制密码后 30 秒自动清除剪贴板，且不走万能剪贴板
+- 两个 Tab：所有密码、我的
+- 面容 ID 和 App 密码可同时开启
+- 第一次使用先设 App 密码，再选择是否开面容 ID
+- 进入后台立即锁定
+- 搜索、右滑复制、长按菜单
+- 详情页突出揭开和复制密码
+- 新建时可以快速换一条密码
+- 复杂密码生成器：自动生成、快捷复制、保存
+- 复制后的密码 30 秒后从剪贴板清除，且不走万能剪贴板
 - 加密导出 / 导入 `.vault` 备份
-- iOS 26 使用 Liquid Glass，iOS 17–25 自动降级为系统材质
+- 系统原生界面；iOS 26 的工具栏、Tab 和主按钮使用 Liquid Glass
 
 ## 安全设计
 
 | 项目 | 实现 |
 | --- | --- |
-| 主密码 | 不落盘，只用于派生密钥 |
-| 密钥派生 | 默认 Argon2id（32 MiB / 3 轮）；备选 PBKDF2-HMAC-SHA256（60 万轮） |
-| 加密 | CryptoKit AES-256-GCM，至少加密密码字段 |
-| 生物识别 | LocalAuthentication + Keychain（`biometryCurrentSet`，仅本机） |
-| 会话 | 解锁后密钥只留在内存；锁定或离开页面后尽快清除明文 |
+| App 密码 | 用 Argon2id 包装数据密钥，不以明文保存 |
+| 面容 ID | LocalAuthentication + Keychain（`userPresence`，仅本机） |
+| 加密 | CryptoKit AES-256-GCM，加密密码字段 |
+| 会话 | 解开后的密钥只留在内存，锁定后清除 |
 | 文件保护 | `NSFileProtectionComplete`，数据目录排除 iCloud 备份 |
 | 剪贴板 | 30 秒过期，`localOnly` |
 
-忘记主密码无法恢复数据。请自行保管主密码，并定期导出加密备份。
+两个锁都关掉后，打开 App 不再验证。建议至少保留一种。需要带到别处时，再导出加密备份。
 
 ## 系统要求
 
@@ -57,6 +63,8 @@ Offline Vault 是一个只供本机使用的密码保险库。用主密码解锁
 2. 在 Signing & Capabilities 里选择你的 Development Team
 3. 选模拟器或真机运行
 
+模拟器请先打开 **Features → Face ID → Enrolled**。
+
 ```bash
 xcodebuild -project OfflineVault.xcodeproj -scheme OfflineVault \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
@@ -67,20 +75,20 @@ xcodebuild -project OfflineVault.xcodeproj -scheme OfflineVault \
 
 ```
 OfflineVault/
-├── App/                 入口与根视图
+├── App/                 入口、根视图、Tab
 ├── Core/
-│   ├── Crypto/          密钥派生、AES-GCM、安全内存
-│   ├── Auth/            主密码、生物识别、自动锁定
+│   ├── Crypto/          Argon2id / PBKDF2、AES-GCM、安全内存
+│   ├── Auth/            App 密码、面容 ID、自动锁定
 │   ├── Vault/           SwiftData 与加解密封装
 │   └── Backup/          .vault 导入导出
-├── Features/            锁定页、列表、详情、编辑、生成器、设置
-├── Shared/              玻璃材质、剪贴板
+├── Features/            锁定、列表、详情、编辑、生成器、我的
+├── Shared/              原生玻璃、剪贴板
 └── Vendor/argon2/       官方 PHC Argon2 源码（本地编译）
 ```
 
 ## 备份格式
 
-导出文件扩展名为 `.vault`。文件内是独立备份密码派生出的密钥，再对整包 JSON 做 AES-GCM 加密。导入时按条目 ID 合并，已存在的条目会被覆盖。
+导出文件扩展名为 `.vault`。用单独的备份密码派生密钥，再对整包 JSON 做 AES-GCM 加密。导入按条目 ID 合并，已存在的会被覆盖。这个密码只保护备份文件，不是打开 App 用的。
 
 ## 许可证
 

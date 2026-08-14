@@ -9,20 +9,29 @@ final class SessionController {
     enum Phase: Equatable {
         case launching
         case needsSetup
+        case needsMigration
         case locked
         case unlocked
     }
 
     private(set) var phase: Phase = .launching
     private(set) var biometricKind: BiometricKind = .none
-    private(set) var isBiometricsEnabled = false
-    private(set) var lastError: String?
+    private(set) var isFaceIDEnabled = false
+    private(set) var isAppPasswordEnabled = false
 
     let autoLock = AutoLockController()
 
     private var dataKey: SymmetricKey?
 
     var isUnlocked: Bool { phase == .unlocked }
+
+    var canUseFaceID: Bool {
+        BiometricUnlock.canProtectApp() && biometricKind != .none
+    }
+
+    var hasAnyLock: Bool {
+        isFaceIDEnabled || isAppPasswordEnabled
+    }
 
     func currentDataKey() throws -> SymmetricKey {
         guard let dataKey, phase == .unlocked else {
@@ -33,57 +42,132 @@ final class SessionController {
 
     func bootstrap() {
         biometricKind = BiometricUnlock.availableKind()
-        isBiometricsEnabled = KeychainStore.exists()
-        phase = VaultConfigurationStore.exists() ? .locked : .needsSetup
+        isFaceIDEnabled = KeychainStore.biometricExists()
+        isAppPasswordEnabled = AppPasswordStore.exists()
+
+        if VaultConfigurationStore.exists() && !VaultStateStore.exists() && !hasAnyLock && !KeychainStore.openExists() {
+            phase = .needsMigration
+            return
+        }
+
+        let initialized = VaultStateStore.exists() || hasAnyLock || KeychainStore.openExists()
+        if !initialized {
+            phase = .needsSetup
+            return
+        }
+
+        if hasAnyLock {
+            phase = .locked
+        } else if let key = try? KeychainStore.loadOpenKey() {
+            activate(key: key)
+        } else {
+            phase = .needsSetup
+        }
     }
 
-    func setupMasterPassword(_ password: String, confirmation: String, enableBiometrics: Bool) async throws {
-        guard !VaultConfigurationStore.exists() else { throw AuthError.alreadyInitialized }
-        guard password == confirmation else { throw AuthError.passwordMismatch }
-        guard PasswordStrengthEvaluator.evaluate(password).isAcceptableForMasterPassword else {
+    func completeFirstRun(appPassword: String, confirmation: String, enableFaceID: Bool) async throws {
+        guard phase == .needsSetup else { throw AuthError.alreadyInitialized }
+        guard appPassword == confirmation else { throw AuthError.passwordMismatch }
+        guard PasswordStrengthEvaluator.evaluate(appPassword).isAcceptableForMasterPassword else {
             throw AuthError.passwordTooWeak
         }
 
-        let (configuration, key) = try await deriveNewConfiguration(password: password)
-        try VaultConfigurationStore.save(configuration)
-        if enableBiometrics {
-            try storeBiometricKey(key)
+        let key = SymmetricKey(size: .bits256)
+        try await Task.detached(priority: .userInitiated) {
+            try AppPasswordStore.wrap(key: key, password: appPassword)
+        }.value
+        isAppPasswordEnabled = true
+
+        if enableFaceID {
+            guard canUseFaceID else { throw AuthError.biometricsUnavailable }
+            _ = try await authenticateFaceID()
+            try KeychainStore.saveBiometricKey(key)
+            isFaceIDEnabled = true
         }
+
+        try VaultStateStore.save(.makeNew())
+        try KeychainStore.deleteOpenKey()
         activate(key: key)
     }
 
-    func unlockWithMasterPassword(_ password: String) async throws {
+    func unlockWithFaceID() async throws {
+        guard isFaceIDEnabled else { throw AuthError.biometricsUnavailable }
+        let context = BiometricUnlock.makeContext()
+        let key = try KeychainStore.loadBiometricKey(context: context)
+        activate(key: key)
+    }
+
+    func unlockWithAppPassword(_ password: String) async throws {
+        guard isAppPasswordEnabled else { throw AuthError.vaultNotInitialized }
+        let key = try await Task.detached(priority: .userInitiated) {
+            try AppPasswordStore.unwrap(password: password)
+        }.value
+        activate(key: key)
+    }
+
+    func migrateFromMasterPassword(_ password: String) async throws {
         let configuration = try VaultConfigurationStore.load()
         let key = try await Task.detached(priority: .userInitiated) {
             try KeyDerivation.derive(password: password, parameters: configuration.parameters)
         }.value
-
         do {
             try configuration.verify(key)
         } catch {
             throw AuthError.incorrectPassword
         }
+
+        try AppPasswordStore.wrap(key: key, password: password)
+        isAppPasswordEnabled = true
+        if canUseFaceID {
+            try? KeychainStore.saveBiometricKey(key)
+            isFaceIDEnabled = KeychainStore.biometricExists()
+        }
+        try VaultStateStore.save(.makeNew())
+        try VaultConfigurationStore.delete()
+        try KeychainStore.deleteOpenKey()
         activate(key: key)
     }
 
-    func unlockWithBiometrics() async throws {
-        guard isBiometricsEnabled else { throw AuthError.biometricsNotEnabled }
-        guard biometricKind != .none else { throw AuthError.biometricsUnavailable }
+    func enableAppPassword(_ password: String, confirmation: String) async throws {
+        let key = try currentDataKey()
+        guard password == confirmation else { throw AuthError.passwordMismatch }
+        guard PasswordStrengthEvaluator.evaluate(password).isAcceptableForMasterPassword else {
+            throw AuthError.passwordTooWeak
+        }
+        try await Task.detached(priority: .userInitiated) {
+            try AppPasswordStore.wrap(key: key, password: password)
+        }.value
+        isAppPasswordEnabled = true
+        try persistUnlockedKeyIfNeeded(key)
+    }
 
-        let reason = "解锁 Offline Vault"
-        let context = BiometricUnlock.makeContext(reason: reason)
-        let success = try await context.evaluatePolicy(
-            .deviceOwnerAuthenticationWithBiometrics,
-            localizedReason: reason
-        )
-        guard success else { throw AuthError.biometricsFailed }
+    func disableAppPassword(current: String) async throws {
+        _ = try await Task.detached(priority: .userInitiated) {
+            try AppPasswordStore.unwrap(password: current)
+        }.value
+        try AppPasswordStore.delete()
+        isAppPasswordEnabled = false
+        try persistUnlockedKeyIfNeeded(try currentDataKey())
+    }
 
-        let key = try KeychainStore.loadProtectedKey(context: context)
-        try VaultConfigurationStore.load().verify(key)
-        activate(key: key)
+    func enableFaceID() async throws {
+        let key = try currentDataKey()
+        guard canUseFaceID else { throw AuthError.biometricsUnavailable }
+        _ = try await authenticateFaceID()
+        try KeychainStore.saveBiometricKey(key)
+        isFaceIDEnabled = true
+        try persistUnlockedKeyIfNeeded(key)
+    }
+
+    func disableFaceID() throws {
+        let key = try currentDataKey()
+        try KeychainStore.deleteBiometricKey()
+        isFaceIDEnabled = false
+        try persistUnlockedKeyIfNeeded(key)
     }
 
     func lock() {
+        guard hasAnyLock else { return }
         dataKey = nil
         autoLock.stop()
         if phase == .unlocked {
@@ -104,64 +188,47 @@ final class SessionController {
         autoLock.registerActivity()
     }
 
-    func enableBiometricsAfterUnlock() throws {
-        let key = try currentDataKey()
-        try storeBiometricKey(key)
+    func resetLocalUnlock() throws {
+        dataKey = nil
+        autoLock.stop()
+        try KeychainStore.deleteAll()
+        try AppPasswordStore.delete()
+        try VaultStateStore.delete()
+        try VaultConfigurationStore.delete()
+        isFaceIDEnabled = false
+        isAppPasswordEnabled = false
+        phase = .needsSetup
+        NotificationCenter.default.post(name: .vaultDidLock, object: nil)
     }
 
-    func disableBiometrics() throws {
-        try KeychainStore.delete()
-        isBiometricsEnabled = false
-    }
-
-    func prepareMasterPasswordChange(
-        current: String,
-        new: String,
-        confirmation: String
-    ) async throws -> (oldKey: SymmetricKey, newKey: SymmetricKey, configuration: VaultConfiguration) {
-        guard new == confirmation else { throw AuthError.passwordMismatch }
-        guard PasswordStrengthEvaluator.evaluate(new).isAcceptableForMasterPassword else {
-            throw AuthError.passwordTooWeak
+    private func persistUnlockedKeyIfNeeded(_ key: SymmetricKey) throws {
+        if hasAnyLock {
+            try KeychainStore.deleteOpenKey()
+        } else {
+            try KeychainStore.saveOpenKey(key)
         }
+    }
 
-        let currentConfiguration = try VaultConfigurationStore.load()
-        let currentKey = try await Task.detached(priority: .userInitiated) {
-            try KeyDerivation.derive(password: current, parameters: currentConfiguration.parameters)
-        }.value
+    private func authenticateFaceID() async throws -> LAContext {
+        guard canUseFaceID else { throw AuthError.biometricsUnavailable }
+        let context = BiometricUnlock.makeContext()
         do {
-            try currentConfiguration.verify(currentKey)
+            let success = try await context.evaluatePolicy(
+                .deviceOwnerAuthenticationWithBiometrics,
+                localizedReason: BiometricUnlock.reason
+            )
+            guard success else { throw AuthError.biometricsFailed }
+            return context
+        } catch let error as AuthError {
+            throw error
         } catch {
-            throw AuthError.incorrectPassword
+            throw AuthError.biometricsFailed
         }
-
-        let (newConfiguration, newKey) = try await deriveNewConfiguration(password: new)
-        return (currentKey, newKey, newConfiguration)
-    }
-
-    func commitMasterPasswordChange(newKey: SymmetricKey, configuration: VaultConfiguration) throws {
-        try VaultConfigurationStore.save(configuration)
-        if isBiometricsEnabled {
-            try storeBiometricKey(newKey)
-        }
-        activate(key: newKey)
-    }
-
-    private func deriveNewConfiguration(password: String) async throws -> (VaultConfiguration, SymmetricKey) {
-        try await Task.detached(priority: .userInitiated) {
-            try VaultConfiguration.create(masterPassword: password)
-        }.value
-    }
-
-    private func storeBiometricKey(_ key: SymmetricKey) throws {
-        guard biometricKind != .none else { throw AuthError.biometricsUnavailable }
-        try KeychainStore.saveProtectedKey(key)
-        isBiometricsEnabled = true
     }
 
     private func activate(key: SymmetricKey) {
         dataKey = key
         phase = .unlocked
-        lastError = nil
         autoLock.start { [weak self] in
             self?.lock()
         }

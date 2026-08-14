@@ -4,6 +4,7 @@ import UIKit
 
 enum ClipboardService {
     static let secretTTL: TimeInterval = 30
+    static let copiedSecretMessage = "密码已复制，30 秒后清除"
 
     static func copySecret(_ value: String, ttl: TimeInterval = secretTTL) {
         UIPasteboard.general.setItems(
@@ -13,6 +14,7 @@ enum ClipboardService {
                 .localOnly: true
             ]
         )
+        Haptics.success()
     }
 
     static func copyText(_ value: String) {
@@ -20,5 +22,6 @@ enum ClipboardService {
             [[UTType.utf8PlainText.identifier: value]],
             options: [.localOnly: true]
         )
+        Haptics.success()
     }
 }

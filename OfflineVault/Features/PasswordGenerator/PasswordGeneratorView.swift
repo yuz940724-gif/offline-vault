@@ -1,25 +1,51 @@
 import SwiftUI
 
 struct PasswordGeneratorView: View {
+    @Environment(VaultService.self) private var vault
     @Environment(\.dismiss) private var dismiss
 
-    var onUse: (String) -> Void
+    var initialPassword: String = ""
+    var onPick: ((String) -> Void)?
 
     @State private var options = PasswordGeneratorOptions()
     @State private var generated = ""
     @State private var errorMessage: String?
+    @State private var banner: String?
+    @State private var showingSave = false
+    @State private var saveTitle = ""
+    @State private var saveUsername = ""
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("预览") {
-                    Text(generated.isEmpty ? "点击生成" : generated)
-                        .font(.body.monospaced())
+            List {
+                Section {
+                    Text(generated.isEmpty ? "正在生成" : generated)
+                        .font(.title3.monospaced())
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 8)
+
+                    HStack {
+                        Button("换一条", action: regenerate)
+                            .nativeGlassButton()
+                        Button("复制", action: copyCurrent)
+                            .nativeGlassButton()
+                            .disabled(generated.isEmpty)
+                        Button("保存") {
+                            if let onPick {
+                                onPick(generated)
+                                dismiss()
+                            } else {
+                                showingSave = true
+                            }
+                        }
+                        .nativeProminentButton()
+                        .disabled(generated.isEmpty)
+                    }
+                    .listRowBackground(Color.clear)
                 }
 
-                Section("选项") {
+                Section("规则") {
                     Stepper(value: $options.length, in: PasswordGeneratorOptions.lengthRange) {
                         Text("长度 \(options.length)")
                     }
@@ -36,36 +62,70 @@ struct PasswordGeneratorView: View {
                             .foregroundStyle(.red)
                     }
                 }
-
-                Section {
-                    Button("重新生成", action: regenerate)
-                    Button("复制") {
-                        ClipboardService.copySecret(generated)
-                    }
-                    .disabled(generated.isEmpty)
-                    Button("使用这个密码") {
-                        onUse(generated)
-                        dismiss()
-                    }
-                    .disabled(generated.isEmpty)
-                }
             }
-            .navigationTitle("密码生成器")
+            .navigationTitle("复杂密码生成器")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("关闭") { dismiss() }
                 }
             }
-            .onAppear(perform: regenerate)
+            .overlay(alignment: .top) {
+                if let banner {
+                    CopyBanner(text: banner)
+                        .padding(.top, 8)
+                }
+            }
+            .sheet(isPresented: $showingSave) {
+                saveSheet
+            }
+            .onAppear {
+                if generated.isEmpty {
+                    if initialPassword.isEmpty {
+                        regenerate()
+                    } else {
+                        generated = initialPassword
+                    }
+                }
+            }
             .onChange(of: options) { _, _ in
                 regenerate()
             }
             .onDisappear {
-                generated = ""
+                if onPick == nil {
+                    generated = ""
+                }
             }
         }
-        .presentationDetents([.medium, .large])
+    }
+
+    private var saveSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("名称", text: $saveTitle)
+                    TextField("账号", text: $saveUsername)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    LabeledContent("密码", value: generated)
+                        .font(.body.monospaced())
+                }
+            }
+            .navigationTitle("保存")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { showingSave = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        saveGenerated()
+                    }
+                    .disabled(saveTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 
     private func regenerate() {
@@ -74,7 +134,36 @@ struct PasswordGeneratorView: View {
             generated = try PasswordGenerator.generate(options)
         } catch {
             generated = ""
-            errorMessage = "请至少选择一种字符类型"
+            errorMessage = "请至少选择一种字符"
+        }
+    }
+
+    private func copyCurrent() {
+        guard !generated.isEmpty else { return }
+        ClipboardService.copySecret(generated)
+        banner = ClipboardService.copiedSecretMessage
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            banner = nil
+        }
+    }
+
+    private func saveGenerated() {
+        do {
+            try vault.create(
+                title: saveTitle,
+                username: saveUsername,
+                password: generated,
+                url: nil,
+                notes: nil,
+                category: nil,
+                isFavorite: false
+            )
+            showingSave = false
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            showingSave = false
         }
     }
 }

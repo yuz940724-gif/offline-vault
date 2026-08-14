@@ -2,13 +2,18 @@
 
 [English](README.md) · [中文](README.zh-CN.md)
 
-A fully offline native iOS password manager. Data never leaves the device. No network permission, no servers.
+A native iOS password book that stays on this iPhone. No network, no account, no cloud.
+
+Unlock with Face ID and an App password at the same time. Face ID is the fast path; the App password is the fallback.
 
 ## What it is
 
-Offline Vault is a personal, on-device password manager for iOS. Unlock with a master password, optionally Face ID / Touch ID. Sensitive fields are encrypted with AES-256-GCM and stored locally in SwiftData.
+Offline Vault stores your logins on device. There are two tabs:
 
-The master password is never stored. It is only used to derive the data-encryption key.
+- **All Passwords** — find, view, copy, and save entries
+- **Me** — choose how the app unlocks, export backups, erase local data
+
+Sensitive fields are encrypted with AES-256-GCM and saved in SwiftData. The data-encryption key never leaves the device. Face ID reads it from the Keychain. The App password unwraps a local copy of the same key.
 
 ## Out of scope
 
@@ -20,29 +25,30 @@ The master password is never stored. It is only used to derive the data-encrypti
 
 ## Features
 
-- First-run master password setup with strength checks
-- Unlock with master password or Face ID / Touch ID
-- Lock immediately in the background; idle timeout while foregrounded (default 5 minutes)
-- Create, read, update, and delete entries
-- Search title, username, and notes; favorites stay on top
-- Built-in password generator
-- Copied passwords expire from the clipboard after 30 seconds and stay off Universal Clipboard
+- Two-tab app: All Passwords and Me
+- Face ID and App password can be on together
+- First launch sets an App password, then optionally Face ID
+- Lock when the app goes to the background
+- Search, swipe to copy, long-press menu
+- Detail view focused on reveal and copy
+- Simple refresh when adding an entry
+- Full password generator: auto-generate, copy, save
+- Copied secrets expire from the clipboard after 30 seconds and stay off Universal Clipboard
 - Encrypted `.vault` backup export / import
-- Liquid Glass on iOS 26; system materials on iOS 17–25
+- Native system UI, with Liquid Glass on iOS 26 toolbars, tabs, and primary actions
 
 ## Security
 
 | Area | Implementation |
 | --- | --- |
-| Master password | Never persisted; used only for key derivation |
-| KDF | Argon2id by default (32 MiB / 3 passes); PBKDF2-HMAC-SHA256 fallback (600,000 iterations) |
-| Encryption | CryptoKit AES-256-GCM, at least for the password field |
-| Biometrics | LocalAuthentication + Keychain (`biometryCurrentSet`, this device only) |
-| Session | Key stays in memory after unlock; plaintext is cleared on lock or when leaving a screen |
+| App password | Wraps the data key with Argon2id; never stored in plaintext |
+| Face ID | LocalAuthentication + Keychain (`userPresence`, this device only) |
+| Encryption | CryptoKit AES-256-GCM for password fields |
+| Session | Unwrapped key stays in memory; cleared on lock |
 | Files | `NSFileProtectionComplete`; vault directory excluded from iCloud backup |
 | Clipboard | 30-second expiry, `localOnly` |
 
-If you forget the master password, the data cannot be recovered. Keep the master password safe and export encrypted backups regularly.
+If both unlock methods are off, the app no longer asks for verification. Keep at least one lock on. Export an encrypted backup if you need a copy off the phone.
 
 ## Requirements
 
@@ -57,6 +63,8 @@ If you forget the master password, the data cannot be recovered. Keep the master
 2. Choose your Development Team under Signing & Capabilities
 3. Run on a simulator or device
 
+On the simulator, turn on **Features → Face ID → Enrolled**.
+
 ```bash
 xcodebuild -project OfflineVault.xcodeproj -scheme OfflineVault \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
@@ -67,20 +75,20 @@ xcodebuild -project OfflineVault.xcodeproj -scheme OfflineVault \
 
 ```
 OfflineVault/
-├── App/                 App entry and root view
+├── App/                 Entry, root view, tab shell
 ├── Core/
-│   ├── Crypto/          Key derivation, AES-GCM, secure memory
-│   ├── Auth/            Master password, biometrics, auto-lock
+│   ├── Crypto/          Argon2id / PBKDF2, AES-GCM, secure memory
+│   ├── Auth/            App password, Face ID, auto-lock
 │   ├── Vault/           SwiftData plus encrypt/decrypt helpers
 │   └── Backup/          .vault import / export
-├── Features/            Lock, list, detail, editor, generator, settings
-├── Shared/              Glass materials, clipboard
+├── Features/            Lock, list, detail, editor, generator, Me
+├── Shared/              Native glass helpers, clipboard
 └── Vendor/argon2/       Official PHC Argon2 sources (compiled locally)
 ```
 
 ## Backup format
 
-Exports use the `.vault` extension. A separate backup password derives the key, then the JSON payload is sealed with AES-GCM. Import merges by entry ID and overwrites existing matches.
+Exports use the `.vault` extension. A separate backup password derives the key, then the JSON payload is sealed with AES-GCM. Import merges by entry ID and overwrites existing matches. That password is only for the backup file, not for opening the app.
 
 ## License
 

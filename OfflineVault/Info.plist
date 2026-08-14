@@ -42,7 +42,7 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
 	<key>NSFaceIDUsageDescription</key>
-	<string>使用 Face ID 解锁本机保险库。主密码与条目数据不会离开这台设备。</string>
+	<string>使用面容 ID 打开本机密码。数据只保存在这台 iPhone 上，不会联网。</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UILaunchScreen</key>

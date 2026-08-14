@@ -38,7 +38,7 @@ struct BackupExportView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("备份密码") {
+                Section {
                     SecureField("备份密码", text: $password)
                         .textContentType(.none)
                         .textInputAutocapitalization(.never)
@@ -48,9 +48,8 @@ struct BackupExportView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     StrengthMeter(password: password)
-                    Text("请使用独立的备份密码。导出后请把 .vault 文件保存在本机安全位置。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("请使用独立的备份密码。导出的 .vault 文件只保存在你选择的位置。")
                 }
                 if let errorMessage {
                     Section {
@@ -136,17 +135,16 @@ struct BackupImportView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("备份文件") {
-                    Button(pickedData == nil ? "选择 .vault 文件" : "已选择备份文件") {
+                Section {
+                    Button(pickedData == nil ? "选择备份" : "已选择备份") {
                         showingImporter = true
                     }
                     SecureField("备份密码", text: $password)
                         .textContentType(.none)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    Text("导入会按条目 ID 合并。已存在的条目会被备份内容覆盖。")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                } footer: {
+                    Text("按条目 ID 合并。已存在的条目会被覆盖。")
                 }
                 if let errorMessage {
                     Section {

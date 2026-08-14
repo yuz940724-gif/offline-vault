@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import SwiftData
 
@@ -78,6 +77,18 @@ final class VaultService {
         try modelContext.save()
     }
 
+    func markUsed(_ entry: PasswordEntry) throws {
+        entry.lastUsedAt = Date()
+        try modelContext.save()
+    }
+
+    func copyPassword(_ entry: PasswordEntry) throws -> String {
+        let password = try decryptPassword(entry)
+        ClipboardService.copySecret(password)
+        try markUsed(entry)
+        return password
+    }
+
     func allEntries() throws -> [PasswordEntry] {
         let descriptor = FetchDescriptor<PasswordEntry>(
             sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
@@ -85,22 +96,16 @@ final class VaultService {
         return try modelContext.fetch(descriptor)
     }
 
-    func changeMasterPassword(current: String, new: String, confirmation: String) async throws {
-        let prepared = try await session.prepareMasterPasswordChange(
-            current: current,
-            new: new,
-            confirmation: confirmation
-        )
-        try reencryptAll(from: prepared.oldKey, to: prepared.newKey)
-        do {
-            try session.commitMasterPasswordChange(
-                newKey: prepared.newKey,
-                configuration: prepared.configuration
-            )
-        } catch {
-            try? reencryptAll(from: prepared.newKey, to: prepared.oldKey)
-            throw error
+    func deleteAllEntries() throws {
+        for entry in try allEntries() {
+            modelContext.delete(entry)
         }
+        try modelContext.save()
+    }
+
+    func resetAllLocalData() throws {
+        try deleteAllEntries()
+        try session.resetLocalUnlock()
     }
 
     func importEntries(_ imported: [BackupPayload.Entry], strategy: ImportStrategy = .merge) throws {
@@ -137,15 +142,6 @@ final class VaultService {
                     )
                 )
             }
-        }
-        try modelContext.save()
-    }
-
-    private func reencryptAll(from oldKey: SymmetricKey, to newKey: SymmetricKey) throws {
-        let entries = try allEntries()
-        for entry in entries {
-            let plaintext = try AESGCMCipher.decryptString(entry.encryptedPassword, key: oldKey)
-            entry.encryptedPassword = try AESGCMCipher.encryptString(plaintext, key: newKey)
         }
         try modelContext.save()
     }

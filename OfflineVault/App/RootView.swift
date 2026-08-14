@@ -8,14 +8,16 @@ struct RootView: View {
         Group {
             switch session.phase {
             case .launching:
-                ProgressView("正在准备保险库")
+                ProgressView()
                     .task { session.bootstrap() }
             case .needsSetup:
                 SetupVaultView()
+            case .needsMigration:
+                MigrationView()
             case .locked:
                 LockScreenView()
             case .unlocked:
-                VaultListView()
+                MainTabView()
             }
         }
         .animation(.easeInOut(duration: 0.2), value: session.phase)
@@ -27,5 +29,20 @@ struct RootView: View {
                 session.registerActivity()
             }
         )
+    }
+}
+
+struct MainTabView: View {
+    var body: some View {
+        TabView {
+            VaultListView()
+                .tabItem {
+                    Label("所有密码", systemImage: "key.fill")
+                }
+            MineView()
+                .tabItem {
+                    Label("我的", systemImage: "person.fill")
+                }
+        }
     }
 }
