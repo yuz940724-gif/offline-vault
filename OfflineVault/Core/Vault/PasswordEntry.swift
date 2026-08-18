@@ -11,6 +11,12 @@ final class PasswordEntry: Identifiable {
     var notes: String?
     var isFavorite: Bool
     var category: String?
+    // Legacy field retained so existing SwiftData stores can open safely.
+    // The app no longer reads or writes secondary groups.
+    var subcategory: String?
+    // Keep a persistent default so the V1 -> V2 lightweight migration can
+    // backfill existing entries without making the old store unreadable.
+    var sortOrder: Int = 0
     var createdAt: Date
     var updatedAt: Date
     var lastUsedAt: Date?
@@ -24,6 +30,8 @@ final class PasswordEntry: Identifiable {
         notes: String? = nil,
         isFavorite: Bool = false,
         category: String? = nil,
+        subcategory: String? = nil,
+        sortOrder: Int = 0,
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         lastUsedAt: Date? = nil
@@ -36,13 +44,45 @@ final class PasswordEntry: Identifiable {
         self.notes = notes
         self.isFavorite = isFavorite
         self.category = category
+        self.subcategory = subcategory
+        self.sortOrder = sortOrder
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.lastUsedAt = lastUsedAt
     }
 }
 
+@Model
+final class PasswordGroup: Identifiable {
+    @Attribute(.unique) var id: UUID
+    var category: String
+    // Legacy field retained for store compatibility; always nil for new data.
+    var subcategory: String?
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        category: String,
+        subcategory: String? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.category = category
+        self.subcategory = subcategory
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 extension PasswordEntry {
+    var groupPath: String? {
+        guard let category else { return nil }
+        let trimmed = category.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     func matches(query: String) -> Bool {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !needle.isEmpty else { return true }

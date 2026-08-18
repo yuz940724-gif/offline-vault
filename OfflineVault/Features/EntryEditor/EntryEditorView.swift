@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct EntryEditorView: View {
@@ -8,6 +9,8 @@ struct EntryEditorView: View {
 
     @Environment(VaultService.self) private var vault
     @Environment(\.dismiss) private var dismiss
+    @Query private var groups: [PasswordGroup]
+    @Query private var entries: [PasswordEntry]
 
     let mode: Mode
     var prefilledTitle: String = ""
@@ -17,11 +20,13 @@ struct EntryEditorView: View {
     @State private var password = ""
     @State private var url = ""
     @State private var notes = ""
+    @State private var category = ""
     @State private var isFavorite = false
     @State private var showingMore = false
     @State private var showingComplexGenerator = false
     @State private var confirmEmptyPassword = false
     @State private var errorMessage: String?
+    @State private var banner: String?
     @State private var didLoad = false
     @State private var didSaveAndKeep = false
 
@@ -33,6 +38,9 @@ struct EntryEditorView: View {
                     TextField("账号", text: $username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    Button("复制账号", systemImage: "doc.on.doc") {
+                        copyUsername()
+                    }
                 }
 
                 Section {
@@ -40,12 +48,30 @@ struct EntryEditorView: View {
                         .textContentType(.none)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    Button("复制密码", systemImage: "key") {
+                        copyPassword()
+                    }
                     Button("换一条") {
                         refreshSimplePassword()
                     }
                     Button("复杂生成") {
                         showingComplexGenerator = true
                     }
+                }
+
+                Section {
+                    Picker("分组", selection: $category) {
+                        Text("未分组").tag("")
+                        ForEach(groupChoices, id: \.self) { group in
+                            Text(group).tag(group)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    Text("可在“我的”→“分组设置”中维护分组")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } header: {
+                    Text("分组")
                 }
 
                 Section {
@@ -71,7 +97,7 @@ struct EntryEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }
+                    Button(cancelTitle) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成", action: attemptSave)
@@ -87,6 +113,12 @@ struct EntryEditorView: View {
                 Button("保存") { save() }
                 Button("取消", role: .cancel) {}
             }
+            .overlay(alignment: .top) {
+                if let banner {
+                    CopyBanner(text: banner)
+                        .padding(.top, 8)
+                }
+            }
             .onAppear(perform: loadIfNeeded)
             .onDisappear {
                 if !didSaveAndKeep {
@@ -100,6 +132,31 @@ struct EntryEditorView: View {
         switch mode {
         case .create: return "记下一条"
         case .edit: return "编辑"
+        }
+    }
+
+    private var cancelTitle: String {
+        switch mode {
+        case .create: return "取消"
+        case .edit: return "关闭"
+        }
+    }
+
+    private var groupChoices: [String] {
+        var choices = Set<String>()
+        for group in groups {
+            let value = group.category.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty {
+                choices.insert(value)
+            }
+        }
+        for entry in entries {
+            guard let category = entry.category?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !category.isEmpty else { continue }
+            choices.insert(category)
+        }
+        return choices.sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
         }
     }
 
@@ -119,6 +176,7 @@ struct EntryEditorView: View {
             username = entry.username
             url = entry.url ?? ""
             notes = entry.notes ?? ""
+            category = entry.category ?? ""
             isFavorite = entry.isFavorite
             showingMore = entry.url != nil || entry.notes != nil || entry.isFavorite
             do {
@@ -141,6 +199,7 @@ struct EntryEditorView: View {
 
     private func save() {
         errorMessage = nil
+        let selectedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             switch mode {
             case .create:
@@ -150,7 +209,7 @@ struct EntryEditorView: View {
                     password: password,
                     url: url,
                     notes: notes,
-                    category: nil,
+                    category: selectedCategory.isEmpty ? nil : selectedCategory,
                     isFavorite: isFavorite
                 )
             case .edit(let entry):
@@ -161,7 +220,7 @@ struct EntryEditorView: View {
                     password: password,
                     url: url,
                     notes: notes,
-                    category: entry.category,
+                    category: selectedCategory.isEmpty ? nil : selectedCategory,
                     isFavorite: isFavorite
                 )
             }
@@ -172,4 +231,33 @@ struct EntryEditorView: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    private func showBanner(_ text: String) {
+        banner = text
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if banner == text {
+                banner = nil
+            }
+        }
+    }
+
+    private func copyUsername() {
+        guard !username.isEmpty else {
+            showBanner("账号为空")
+            return
+        }
+        ClipboardService.copyText(username)
+        showBanner("已复制账号")
+    }
+
+    private func copyPassword() {
+        guard !password.isEmpty else {
+            showBanner("密码为空，请先输入密码")
+            return
+        }
+        ClipboardService.copyText(password)
+        showBanner(ClipboardService.copiedSecretMessage)
+    }
+
 }

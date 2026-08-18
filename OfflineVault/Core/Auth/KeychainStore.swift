@@ -99,6 +99,9 @@ enum KeychainStore {
             if status == errSecUserCanceled || status == errSecAuthFailed {
                 throw AuthError.biometricsFailed
             }
+            if status == errSecInteractionNotAllowed {
+                throw AuthError.biometricsTemporarilyUnavailable
+            }
             throw AuthError.keychainFailed(status)
         }
         defer { SecureMemory.zero(&data) }
@@ -106,12 +109,14 @@ enum KeychainStore {
     }
 
     private static func exists(account: String) -> Bool {
+        let context = LAContext()
+        context.interactionNotAllowed = true
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: false,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
+            kSecUseAuthenticationContext as String: context
         ]
         let status = SecItemCopyMatching(query as CFDictionary, nil)
         return status == errSecSuccess || status == errSecInteractionNotAllowed

@@ -26,6 +26,7 @@ struct SetupVaultView: View {
                     Text("打开 App 时使用。密码只在这台 iPhone 上验证，不会联网。")
                 }
 
+#if !targetEnvironment(simulator)
                 if session.canUseFaceID {
                     Section {
                         Toggle(session.biometricKind.title, isOn: $enableFaceID)
@@ -33,6 +34,18 @@ struct SetupVaultView: View {
                         Text("开启后，打开 App 会先尝试\(session.biometricKind.title)。失败时再用 App 密码。")
                     }
                 }
+#endif
+
+#if targetEnvironment(simulator)
+                Section("模拟器开发模式") {
+                    Button("无需密码，直接进入模拟器") {
+                        startSimulatorMode()
+                    }
+                    Text("仅模拟器有效。模拟器会保存开发密钥，后续打开不再要求 App 密码；真机仍使用正常安全流程。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+#endif
 
                 if let errorMessage {
                     Section {
@@ -82,4 +95,17 @@ struct SetupVaultView: View {
             }
         }
     }
+
+#if targetEnvironment(simulator)
+    private func startSimulatorMode() {
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try session.enableSimulatorBypass()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+#endif
 }

@@ -1,15 +1,23 @@
+import SwiftData
 import SwiftUI
 
 struct MineView: View {
     @Environment(SessionController.self) private var session
     @Environment(VaultService.self) private var vault
 
+    private enum ActiveSheet: String, Identifiable {
+        case setAppPassword
+        case disableAppPassword
+        case export
+        case `import`
+
+        var id: String { rawValue }
+    }
+
     @State private var timeout: TimeInterval = AutoLockController.defaultTimeout
-    @State private var showingExport = false
-    @State private var showingImport = false
+    @State private var showingAutoLockPicker = false
+    @State private var activeSheet: ActiveSheet?
     @State private var showingReset = false
-    @State private var showingSetAppPassword = false
-    @State private var showingDisableAppPassword = false
     @State private var disablePassword = ""
     @State private var isWorking = false
     @State private var errorMessage: String?
@@ -35,24 +43,52 @@ struct MineView: View {
                 }
 
                 Section {
-                    Picker("自动锁定", selection: $timeout) {
-                        ForEach(AutoLockController.timeoutOptions, id: \.self) { value in
-                            Text(AutoLockController.timeoutTitle(value)).tag(value)
+                    HStack(spacing: 12) {
+                        Text("自动锁定")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            showingAutoLockPicker = true
+                            session.registerActivity()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(AutoLockController.timeoutTitle(timeout))
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("自动锁定时间，当前为\(AutoLockController.timeoutTitle(timeout))")
                     }
-                    .onChange(of: timeout) { _, newValue in
-                        session.autoLock.timeout = newValue
-                        session.registerActivity()
-                    }
+                    .contentShape(Rectangle())
                 } footer: {
-                    Text("离开 App 会立即锁定。回来时按上面的方式打开。")
+                    Text("在 App 内无操作超过所选时间后锁定。切回 App 时也会检查是否已超时。")
                 }
 
                 Section {
-                    Button("导出备份") { showingExport = true }
-                    Button("导入备份") { showingImport = true }
+                    NavigationLink {
+                        GroupSettingsView()
+                    } label: {
+                        Label("分组设置", systemImage: "folder")
+                    }
                 } footer: {
-                    Text("备份文件用单独的密码加密，只保存在你选择的位置。")
+                    Text("维护分组。密码编辑时可直接下拉选择。")
+                }
+
+                Section {
+                    Button("导出备份") {
+                        activeSheet = .export
+                        session.registerActivity()
+                    }
+                    .contentShape(Rectangle())
+                    Button("导入备份") {
+                        activeSheet = .import
+                        session.registerActivity()
+                    }
+                    .contentShape(Rectangle())
+                } footer: {
+                    Text("换机时：旧机导出 .vault，通过隔空投送或文件发送到新机，再在新机导入。不会自动联网迁移。")
                 }
 
                 Section {
@@ -84,34 +120,41 @@ struct MineView: View {
                 }
             }
             .navigationTitle("我的")
-            .sheet(isPresented: $showingSetAppPassword) {
+        }
+        .sheet(isPresented: $showingAutoLockPicker) {
+            AutoLockTimePickerView(timeout: $timeout)
+        }
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .setAppPassword:
                 SetAppPasswordView { password, confirmation in
                     try await session.enableAppPassword(password, confirmation: confirmation)
                     statusMessage = "已开启 App 密码"
                 }
-            }
-            .sheet(isPresented: $showingDisableAppPassword) {
+            case .disableAppPassword:
                 disablePasswordSheet
-            }
-            .sheet(isPresented: $showingExport) {
+            case .export:
                 BackupExportView { message in
                     statusMessage = message
                 }
-            }
-            .sheet(isPresented: $showingImport) {
+            case .import:
                 BackupImportView { message in
                     statusMessage = message
                 }
             }
-            .confirmationDialog("删除本机全部密码？", isPresented: $showingReset, titleVisibility: .visible) {
-                Button("删除全部", role: .destructive, action: resetAll)
-                Button("取消", role: .cancel) {}
-            } message: {
-                Text("App 密码和面容 ID 保护也会一起清除。")
-            }
-            .onAppear {
-                timeout = session.autoLock.timeout
-            }
+        }
+        .confirmationDialog("删除本机全部密码？", isPresented: $showingReset, titleVisibility: .visible) {
+            Button("删除全部", role: .destructive, action: resetAll)
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("App 密码和面容 ID 保护也会一起清除。")
+        }
+        .onAppear {
+            timeout = session.autoLock.timeout
+        }
+        .onChange(of: timeout) { _, value in
+            session.autoLock.timeout = value
+            session.registerActivity()
         }
     }
 
@@ -134,9 +177,9 @@ struct MineView: View {
             set: { enabled in
                 errorMessage = nil
                 if enabled {
-                    showingSetAppPassword = true
+                    activeSheet = .setAppPassword
                 } else {
-                    showingDisableAppPassword = true
+                    activeSheet = .disableAppPassword
                 }
             }
         )
@@ -184,7 +227,7 @@ struct MineView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") {
                         disablePassword = ""
-                        showingDisableAppPassword = false
+                        activeSheet = nil
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -204,7 +247,7 @@ struct MineView: View {
         do {
             try await session.disableAppPassword(current: disablePassword)
             disablePassword = ""
-            showingDisableAppPassword = false
+            activeSheet = nil
             statusMessage = "已关闭 App 密码"
         } catch {
             errorMessage = error.localizedDescription
@@ -215,6 +258,187 @@ struct MineView: View {
         errorMessage = nil
         do {
             try vault.resetAllLocalData()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct AutoLockTimePickerView: View {
+    @Binding var timeout: TimeInterval
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Picker("自动锁定时间", selection: $timeout) {
+                ForEach(AutoLockController.timeoutOptions, id: \.self) { value in
+                    Text(AutoLockController.timeoutTitle(value)).tag(value)
+                }
+            }
+            .pickerStyle(.wheel)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal)
+            .navigationTitle("自动锁定时间")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.height(280)])
+    }
+}
+
+struct GroupSettingsView: View {
+    @Environment(VaultService.self) private var vault
+    @Query private var groups: [PasswordGroup]
+    @Query private var entries: [PasswordEntry]
+
+    @State private var pendingDeleteCategory: String?
+    @State private var errorMessage: String?
+
+    private var categories: [String] {
+        Set(groups.compactMap { group in
+            let value = group.category.trimmingCharacters(in: .whitespacesAndNewlines)
+            return value.isEmpty ? nil : value
+        }).sorted {
+            $0.localizedStandardCompare($1) == .orderedAscending
+        }
+    }
+
+    var body: some View {
+        List {
+            if groups.isEmpty {
+                ContentUnavailableView {
+                    Label("还没有分组", systemImage: "folder")
+                } description: {
+                    Text("点击右上角加号创建分组")
+                }
+            } else {
+                ForEach(categories, id: \.self) { category in
+                    HStack {
+                        Text(category)
+                        Spacer()
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if !isUsed(category) {
+                            Button(role: .destructive) {
+                                pendingDeleteCategory = category
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .listSectionSpacing(.custom(12))
+        .navigationTitle("分组设置")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    GroupEditorView()
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("新增分组")
+            }
+        }
+        .confirmationDialog(
+            "删除这个空分组？",
+            isPresented: Binding(
+                get: { pendingDeleteCategory != nil },
+                set: { if !$0 { pendingDeleteCategory = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("删除", role: .destructive) {
+                if let pendingDeleteCategory {
+                    do {
+                        try vault.deleteGroup(category: pendingDeleteCategory)
+                    } catch {
+                        errorMessage = error.localizedDescription
+                    }
+                }
+                pendingDeleteCategory = nil
+            }
+            Button("取消", role: .cancel) {
+                pendingDeleteCategory = nil
+            }
+        } message: {
+            Text("已使用的分组不会提供删除操作，避免误改密码归属。")
+        }
+        .task {
+            do {
+                try vault.ensureGroupsFromEntries()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func isUsed(_ category: String) -> Bool {
+        entries.contains { entry in
+            entry.category?.trimmingCharacters(in: .whitespacesAndNewlines) == category
+        }
+    }
+}
+
+struct GroupEditorView: View {
+    @Environment(VaultService.self) private var vault
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var category = ""
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Form {
+            Section {
+                TextField("分组名称，例如 ECS", text: $category)
+            } footer: {
+                Text("密码编辑时可以直接选择这个分组。")
+            }
+
+            if let errorMessage {
+                Section {
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .navigationTitle("新增分组")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("取消") { dismiss() }
+            }
+            ToolbarItem(placement: .confirmationAction) {
+                Button("保存") { save() }
+                    .disabled(!canSave)
+            }
+        }
+        .onChange(of: category) { _, _ in
+            errorMessage = nil
+        }
+    }
+
+    private var canSave: Bool {
+        !category.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func save() {
+        do {
+            try vault.createGroup(category: category)
+            dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }

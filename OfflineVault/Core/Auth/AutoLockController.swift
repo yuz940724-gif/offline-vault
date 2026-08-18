@@ -5,7 +5,7 @@ import SwiftUI
 @Observable
 final class AutoLockController {
     static let defaultTimeout: TimeInterval = 5 * 60
-    static let timeoutOptions: [TimeInterval] = [60, 120, 300, 600, 900]
+    static let timeoutOptions: [TimeInterval] = [60, 120, 300, 600, 900, 1800]
 
     var timeout: TimeInterval {
         didSet {
@@ -33,7 +33,7 @@ final class AutoLockController {
         stop()
         registerActivity()
         let timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 if Date().timeIntervalSince(self.lastActivityAt) >= self.timeout {
                     onFire()
@@ -51,7 +51,11 @@ final class AutoLockController {
     }
 
     func shouldLock(for scenePhase: ScenePhase) -> Bool {
-        scenePhase == .background
+        scenePhase == .active && hasTimedOut
+    }
+
+    var hasTimedOut: Bool {
+        Date().timeIntervalSince(lastActivityAt) >= timeout
     }
 
     static func timeoutTitle(_ timeout: TimeInterval) -> String {

@@ -24,11 +24,6 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, phase in
             session.handleScenePhase(phase)
         }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0).onChanged { _ in
-                session.registerActivity()
-            }
-        )
     }
 }
 

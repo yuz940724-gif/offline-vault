@@ -41,6 +41,8 @@ struct BackupPayload: Codable, Equatable {
         var category: String?
         var createdAt: Date
         var updatedAt: Date
+        var sortOrder: Int = 0
+        var subcategory: String? = nil
     }
 }
 
@@ -77,7 +79,12 @@ enum BackupService {
                     isFavorite: entry.isFavorite,
                     category: entry.category,
                     createdAt: entry.createdAt,
-                    updatedAt: entry.updatedAt
+                    updatedAt: entry.updatedAt,
+                    sortOrder: entry.sortOrder,
+                    // Secondary groups were removed from the product. Keep
+                    // the optional field in the payload only so old backups
+                    // remain decodable, but never write it to new exports.
+                    subcategory: nil
                 )
             }
         )

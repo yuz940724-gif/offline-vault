@@ -55,6 +55,13 @@ struct EntryDetailView: View {
                 }
             }
 
+            if let groupPath = entry.groupPath {
+                Section("分组") {
+                    Text(groupPath)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             if let notes = entry.notes, !notes.isEmpty {
                 Section("备注") {
                     Text(notes)
