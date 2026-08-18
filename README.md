@@ -10,7 +10,7 @@ Unlock with Face ID and an App password at the same time. Face ID is the fast pa
 
 Offline Vault stores your logins on device. There are two tabs:
 
-- **All Passwords** — find, view, copy, and save entries
+- **All Passwords** — browse by two-level groups, view, copy, edit, and save entries
 - **Me** — choose how the app unlocks, export backups, erase local data
 
 Sensitive fields are encrypted with AES-256-GCM and saved in SwiftData. The data-encryption key never leaves the device. Face ID reads it from the Keychain. The App password unwraps a local copy of the same key.
@@ -20,7 +20,7 @@ Sensitive fields are encrypted with AES-256-GCM and saved in SwiftData. The data
 - Accounts / sign-in
 - Cloud sync / iCloud
 - Any network request or analytics
-- Sharing
+- Password sharing (device migration uses encrypted backups)
 - Browser AutoFill extensions (v1)
 
 ## Features
@@ -28,13 +28,14 @@ Sensitive fields are encrypted with AES-256-GCM and saved in SwiftData. The data
 - Two-tab app: All Passwords and Me
 - Face ID and App password can be on together
 - First launch sets an App password, then optionally Face ID
-- Lock when the app goes to the background
-- Search, swipe to copy, long-press menu
-- Detail view focused on reveal and copy
+- Lock after the selected idle period, and re-check the timeout when returning to the app
+- Search names, usernames, URLs, notes, and both group levels
+- Detail view supports reveal, copy, and editing
+- Two-level groups such as `ECS / AppStore`
 - Simple refresh when adding an entry
 - Full password generator: auto-generate, copy, save
 - Copied secrets expire from the clipboard after 30 seconds and stay off Universal Clipboard
-- Encrypted `.vault` backup export / import
+- Encrypted `.vault` backup export / import for AirDrop or Files-based device migration
 - Native system UI, with Liquid Glass on iOS 26 toolbars, tabs, and primary actions
 
 ## Screenshots
@@ -56,7 +57,7 @@ The screenshots below are from the current `main` build running on an iPhone 17 
 | Files | `NSFileProtectionComplete`; vault directory excluded from iCloud backup |
 | Clipboard | 30-second expiry, `localOnly` |
 
-If both unlock methods are off, the app no longer asks for verification. Keep at least one lock on. Export an encrypted backup if you need a copy off the phone.
+If both unlock methods are off, the app no longer asks for verification. Keep at least one lock on. To move to a new iPhone, export an encrypted backup from the old phone and import it through AirDrop or Files on the new phone; this app has no cloud sync or automatic online migration.
 
 ## Requirements
 
@@ -72,6 +73,8 @@ If both unlock methods are off, the app no longer asks for verification. Keep at
 3. Run on a simulator or device
 
 On the simulator, turn on **Features → Face ID → Enrolled**.
+
+If you forget the App password in the simulator, choose **Forgot password, enter simulator directly** on the lock screen. The first use clears the simulator's local vault and saves a development key, so later simulator launches do not ask for a password. This entry point is compiled only for Simulator and never appears on a physical device.
 
 ```bash
 xcodebuild -project OfflineVault.xcodeproj -scheme OfflineVault \

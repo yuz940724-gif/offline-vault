@@ -7,6 +7,7 @@ enum AuthError: Error, Equatable, LocalizedError {
     case incorrectPassword
     case biometricsUnavailable
     case biometricsFailed
+    case biometricsTemporarilyUnavailable
     case passwordTooWeak
     case passwordMismatch
     case configurationCorrupted
@@ -26,6 +27,8 @@ enum AuthError: Error, Equatable, LocalizedError {
             return "请先在系统设置里开启面容 ID，或设置设备密码"
         case .biometricsFailed:
             return "未能解锁，请再试一次"
+        case .biometricsTemporarilyUnavailable:
+            return "面容 ID 正在准备中，请点按上方按钮再试一次"
         case .passwordTooWeak:
             return "密码强度不足"
         case .passwordMismatch:

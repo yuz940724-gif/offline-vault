@@ -12,6 +12,7 @@ final class BackupServiceTests: XCTestCase {
             notes: "personal",
             isFavorite: true,
             category: "dev",
+            subcategory: "source-control",
             createdAt: now,
             updatedAt: now
         )
@@ -31,6 +32,7 @@ final class BackupServiceTests: XCTestCase {
         XCTAssertEqual(payload.entries[0].password, "s3cret!")
         XCTAssertEqual(payload.entries[0].username, "ada")
         XCTAssertTrue(payload.entries[0].isFavorite)
+        XCTAssertNil(payload.entries[0].subcategory)
     }
 
     func testWrongBackupPasswordFails() throws {

@@ -2,12 +2,19 @@ import SwiftUI
 
 struct LockScreenView: View {
     @Environment(SessionController.self) private var session
+    @Environment(\.scenePhase) private var scenePhase
+#if targetEnvironment(simulator)
+    @Environment(VaultService.self) private var vault
+#endif
 
     @State private var password = ""
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var showPassword = false
     @State private var didAutoPrompt = false
+#if targetEnvironment(simulator)
+    @State private var showingSimulatorReset = false
+#endif
 
     var body: some View {
         NavigationStack {
@@ -50,6 +57,24 @@ struct LockScreenView: View {
                             .foregroundStyle(.red)
                     }
                 }
+
+#if targetEnvironment(simulator)
+                Section("模拟器开发模式") {
+                    Button("忘记密码，直接进入模拟器") {
+                        showingSimulatorReset = true
+                    }
+                    Text("仅模拟器有效。首次使用会清空模拟器中的本地密码数据，真机不会显示此选项。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+#endif
+
+                if session.isFaceIDEnabled && errorMessage != nil {
+                    Section {
+                        Button("再次尝试\(session.biometricKind.title)", action: unlockWithFaceID)
+                            .disabled(isWorking)
+                    }
+                }
             }
             .navigationTitle("密码")
             .overlay {
@@ -64,13 +89,38 @@ struct LockScreenView: View {
                 }
                 autoPromptIfNeeded()
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    autoPromptIfNeeded()
+                } else {
+                    didAutoPrompt = false
+                }
+            }
+#if targetEnvironment(simulator)
+            .confirmationDialog(
+                "清空模拟器中的密码数据？",
+                isPresented: $showingSimulatorReset,
+                titleVisibility: .visible
+            ) {
+                Button("清空并直接进入", role: .destructive) {
+                    resetForSimulatorBypass()
+                }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("忘记的密码无法解密旧数据。此操作只影响模拟器，不影响真机。")
+            }
+#endif
         }
     }
 
     private func autoPromptIfNeeded() {
-        guard !didAutoPrompt, session.isFaceIDEnabled else { return }
+        guard scenePhase == .active, !didAutoPrompt, session.isFaceIDEnabled else { return }
         didAutoPrompt = true
-        unlockWithFaceID()
+        Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, scenePhase == .active else { return }
+            unlockWithFaceID()
+        }
     }
 
     private func unlockWithFaceID() {
@@ -103,4 +153,18 @@ struct LockScreenView: View {
             }
         }
     }
+
+#if targetEnvironment(simulator)
+    private func resetForSimulatorBypass() {
+        errorMessage = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            try vault.resetForSimulatorBypass()
+            password = ""
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+#endif
 }

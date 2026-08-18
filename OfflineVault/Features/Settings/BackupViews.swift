@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct VaultBackupDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.vaultBackup, .data] }
+    static var writableContentTypes: [UTType] { [.vaultBackup] }
 
     var data: Data
 
@@ -43,13 +44,13 @@ struct BackupExportView: View {
                         .textContentType(.none)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    SecureField("再次输入", text: $confirmation)
+                    SecureField("确认备份密码", text: $confirmation)
                         .textContentType(.none)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     StrengthMeter(password: password)
                 } footer: {
-                    Text("请使用独立的备份密码。导出的 .vault 文件只保存在你选择的位置。")
+                    Text("请填写两次相同的独立备份密码。建议至少 12 位；密码越弱，备份文件越容易被猜解。导入时必须使用同一个密码。")
                 }
                 if let errorMessage {
                     Section {
@@ -69,29 +70,31 @@ struct BackupExportView: View {
                         ProgressView()
                     } else {
                         Button("导出", action: prepareExport)
-                            .disabled(!canExport)
+                            .disabled(isWorking)
                     }
                 }
             }
-            .fileExporter(
-                isPresented: $showingExporter,
-                document: document,
-                contentType: .vaultBackup,
-                defaultFilename: defaultFilename
-            ) { result in
-                switch result {
-                case .success:
-                    onFinished("备份已导出")
-                    dismiss()
-                case .failure(let error):
-                    errorMessage = error.localizedDescription
-                }
+        }
+        .fileExporter(
+            isPresented: $showingExporter,
+            document: document,
+            contentType: .vaultBackup,
+            defaultFilename: defaultFilename
+        ) { result in
+            switch result {
+            case .success:
+                onFinished("备份已导出")
+                dismiss()
+            case .failure(let error):
+                errorMessage = error.localizedDescription
             }
         }
-    }
-
-    private var canExport: Bool {
-        password == confirmation && PasswordStrengthEvaluator.evaluate(password).isAcceptableForMasterPassword
+        .onChange(of: password) { _, _ in
+            errorMessage = nil
+        }
+        .onChange(of: confirmation) { _, _ in
+            errorMessage = nil
+        }
     }
 
     private var defaultFilename: String {
@@ -101,6 +104,14 @@ struct BackupExportView: View {
 
     private func prepareExport() {
         errorMessage = nil
+        guard !password.isEmpty else {
+            errorMessage = "请先设置备份密码"
+            return
+        }
+        guard password == confirmation else {
+            errorMessage = "两次输入的备份密码不一致"
+            return
+        }
         isWorking = true
         Task {
             defer { isWorking = false }
@@ -129,6 +140,7 @@ struct BackupImportView: View {
     @State private var password = ""
     @State private var showingImporter = false
     @State private var pickedData: Data?
+    @State private var pickedFilename: String?
     @State private var isWorking = false
     @State private var errorMessage: String?
 
@@ -136,8 +148,13 @@ struct BackupImportView: View {
         NavigationStack {
             Form {
                 Section {
-                    Button(pickedData == nil ? "选择备份" : "已选择备份") {
+                    Button(pickedFilename == nil ? "选择备份" : "重新选择备份") {
+                        errorMessage = nil
                         showingImporter = true
+                    }
+                    .contentShape(Rectangle())
+                    if let pickedFilename {
+                        LabeledContent("文件", value: pickedFilename)
                     }
                     SecureField("备份密码", text: $password)
                         .textContentType(.none)
@@ -145,6 +162,14 @@ struct BackupImportView: View {
                         .autocorrectionDisabled()
                 } footer: {
                     Text("按条目 ID 合并。已存在的条目会被覆盖。")
+                }
+                if pickedData != nil {
+                    Section {
+                        Label("备份文件已读入", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } footer: {
+                        Text("输入导出时设置的备份密码，然后点击右上角“导入”。")
+                    }
                 }
                 if let errorMessage {
                     Section {
@@ -164,7 +189,7 @@ struct BackupImportView: View {
                         ProgressView()
                     } else {
                         Button("导入", action: importBackup)
-                            .disabled(pickedData == nil || password.isEmpty)
+                            .disabled(isWorking)
                     }
                 }
             }
@@ -194,14 +219,25 @@ struct BackupImportView: View {
         }
         do {
             pickedData = try Data(contentsOf: url)
+            pickedFilename = url.lastPathComponent
         } catch {
+            pickedData = nil
+            pickedFilename = nil
             errorMessage = error.localizedDescription
         }
     }
 
     private func importBackup() {
-        guard let pickedData else { return }
         errorMessage = nil
+        guard pickedData != nil else {
+            errorMessage = "请先选择 .vault 备份文件"
+            return
+        }
+        guard !password.isEmpty else {
+            errorMessage = "请输入备份密码"
+            return
+        }
+        guard let pickedData else { return }
         isWorking = true
         Task {
             defer { isWorking = false }
