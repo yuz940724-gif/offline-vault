@@ -8,10 +8,11 @@ Unlock with Face ID and an App password at the same time. Face ID is the fast pa
 
 ## What it is
 
-Offline Vault stores your logins on device. There are two tabs:
+Offline Vault stores your logins on device. There are two main tabs, plus a dedicated Search entry on iOS 26:
 
-- **All Passwords** — browse by two-level groups, view, copy, edit, and save entries
-- **Me** — choose how the app unlocks, export backups, erase local data
+- **All Passwords** — filter by group, collapse sections, copy credentials, and open an entry directly for editing
+- **Me** — configure unlocking, auto-lock, appearance, groups, backups, and local data
+- **Search** — find an entry by name, username, URL, notes, or group
 
 Sensitive fields are encrypted with AES-256-GCM and saved in SwiftData. The data-encryption key never leaves the device. Face ID reads it from the Keychain. The App password unwraps a local copy of the same key.
 
@@ -26,25 +27,31 @@ Sensitive fields are encrypted with AES-256-GCM and saved in SwiftData. The data
 ## Features
 
 - Two-tab app: All Passwords and Me
+- Dedicated system Search entry on iOS 26, with a compatible search flow on earlier iOS versions
 - Face ID and App password can be on together
 - First launch sets an App password, then optionally Face ID
 - Lock after the selected idle period, and re-check the timeout when returning to the app
-- Search names, usernames, URLs, notes, and both group levels
-- Detail view supports reveal, copy, and editing
-- Two-level groups such as `ECS / AppStore`
+- Search names, usernames, URLs, notes, and groups
+- Tap an account card to edit it; copy the username or password directly from the card
+- Single-level groups with top filters and collapsible sections
+- Light, dark, and system-following appearances
 - Simple refresh when adding an entry
 - Full password generator: auto-generate, copy, save
 - Copied secrets expire from the clipboard after 30 seconds and stay off Universal Clipboard
 - Encrypted `.vault` backup export / import for AirDrop or Files-based device migration
-- Native system UI, with Liquid Glass on iOS 26 toolbars, tabs, and primary actions
+- Native system UI, with Liquid Glass on iOS 26 navigation, tabs, and primary actions
 
 ## Screenshots
 
-The screenshots below are from the current `main` build running on an iPhone 17 simulator with iOS 26.5.
+The screenshots below are from the current `main` build running on an iPhone 17 simulator with iOS 26.5. The entries shown are test data.
 
-| All Passwords | Me |
+| All Passwords · Light | Search |
 | --- | --- |
-| ![All Passwords empty state](docs/screenshots/passwords-list.jpg) | ![Me settings](docs/screenshots/me-settings.jpg) |
+| ![All Passwords in light mode](docs/screenshots/vault-home-light.jpg) | ![Search results](docs/screenshots/vault-search.jpg) |
+
+| Me · Settings | All Passwords · Dark |
+| --- | --- |
+| ![Me settings in light mode](docs/screenshots/vault-settings-light.jpg) | ![All Passwords in dark mode](docs/screenshots/vault-home-dark.jpg) |
 
 ## Security
 
@@ -92,7 +99,7 @@ OfflineVault/
 │   ├── Auth/            App password, Face ID, auto-lock
 │   ├── Vault/           SwiftData plus encrypt/decrypt helpers
 │   └── Backup/          .vault import / export
-├── Features/            Lock, list, detail, editor, generator, Me
+├── Features/            Lock, list, search, editor, generator, Me
 ├── Shared/              Native glass helpers, clipboard
 └── Vendor/argon2/       Official PHC Argon2 sources (compiled locally)
 ```

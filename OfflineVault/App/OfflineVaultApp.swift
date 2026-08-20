@@ -5,6 +5,7 @@ import SwiftUI
 struct OfflineVaultApp: App {
     @State private var session: SessionController
     @State private var vaultService: VaultService?
+    @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     private let container: ModelContainer?
 
     init() {
@@ -24,18 +25,23 @@ struct OfflineVaultApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if let container, let vaultService {
-                RootView()
-                    .environment(session)
-                    .environment(vaultService)
-                    .modelContainer(container)
-            } else {
-                ContentUnavailableView(
-                    "无法打开本地保险库",
-                    systemImage: "exclamationmark.lock.fill",
-                    description: Text("数据目录无法使用完整文件保护打开。")
-                )
+            Group {
+                if let container, let vaultService {
+                    RootView()
+                        .environment(session)
+                        .environment(vaultService)
+                        .modelContainer(container)
+                } else {
+                    ContentUnavailableView(
+                        "无法打开本地保险库",
+                        systemImage: "exclamationmark.lock.fill",
+                        description: Text("数据目录无法使用完整文件保护打开。")
+                    )
+                }
             }
+            .preferredColorScheme(
+                AppAppearance(rawValue: appearanceRawValue)?.colorScheme
+            )
         }
     }
 }

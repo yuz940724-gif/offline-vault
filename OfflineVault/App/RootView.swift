@@ -28,15 +28,49 @@ struct RootView: View {
 }
 
 struct MainTabView: View {
+    @State private var searchText = ""
+
     var body: some View {
+        if #available(iOS 26.0, *) {
+            modernTabView
+        } else {
+            legacyTabView
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private var modernTabView: some View {
+        TabView {
+            Tab("所有密码", systemImage: "key") {
+                VaultListView(showsInlineSearch: false)
+            }
+
+            Tab("我的", systemImage: "person") {
+                MineView()
+            }
+
+            Tab(role: .search) {
+                VaultListView(
+                    presentation: .search,
+                    searchText: $searchText,
+                    showsInlineSearch: false
+                )
+                .searchable(text: $searchText, prompt: "搜索名称、账号或分组")
+            }
+        }
+        .tabViewSearchActivation(.searchTabSelection)
+        .tabBarMinimizeBehavior(.onScrollDown)
+    }
+
+    private var legacyTabView: some View {
         TabView {
             VaultListView()
                 .tabItem {
-                    Label("所有密码", systemImage: "key.fill")
+                    Label("所有密码", systemImage: "key")
                 }
             MineView()
                 .tabItem {
-                    Label("我的", systemImage: "person.fill")
+                    Label("我的", systemImage: "person")
                 }
         }
     }

@@ -22,103 +22,163 @@ struct MineView: View {
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var statusMessage: String?
+    @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    Toggle(isOn: appPasswordBinding) {
-                        Text("App 密码")
-                    }
-                    .disabled(isWorking)
+            ScrollView {
+                VStack(spacing: 24) {
+                    protectionSummary
 
-                    if session.canUseFaceID {
-                        Toggle(isOn: faceIDBinding) {
-                            Text(session.biometricKind.title)
+                    SettingsCard(
+                        title: "安全与解锁",
+                        footer: lockFooter
+                    ) {
+                        HStack(spacing: 14) {
+                            SettingsLeadingLabel(
+                                title: "App 密码",
+                                systemImage: "lock.fill",
+                                tint: .indigo
+                            )
+                            Spacer(minLength: 12)
+                            Toggle("App 密码", isOn: appPasswordBinding)
+                                .labelsHidden()
+                                .disabled(isWorking)
                         }
-                        .disabled(isWorking)
-                    }
-                } footer: {
-                    Text(lockFooter)
-                }
+                        .padding(14)
 
-                Section {
-                    HStack(spacing: 12) {
-                        Text("自动锁定")
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if session.canUseFaceID {
+                            SettingsDivider()
+
+                            HStack(spacing: 14) {
+                                SettingsLeadingLabel(
+                                    title: session.biometricKind.title,
+                                    systemImage: "faceid",
+                                    tint: .green
+                                )
+                                Spacer(minLength: 12)
+                                Toggle(session.biometricKind.title, isOn: faceIDBinding)
+                                    .labelsHidden()
+                                    .disabled(isWorking)
+                            }
+                            .padding(14)
+                        }
+                    }
+
+                    SettingsCard(
+                        title: "偏好设置",
+                        footer: "自动锁定会在无操作超时或重新进入 App 时生效。"
+                    ) {
                         Button {
                             showingAutoLockPicker = true
                             session.registerActivity()
                         } label: {
-                            HStack(spacing: 4) {
-                                Text(AutoLockController.timeoutTitle(timeout))
-                                    .foregroundStyle(.secondary)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
+                            SettingsNavigationRow(
+                                title: "自动锁定",
+                                systemImage: "timer",
+                                tint: .orange,
+                                value: AutoLockController.timeoutTitle(timeout)
+                            )
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(SettingsPressButtonStyle())
                         .accessibilityLabel("自动锁定时间，当前为\(AutoLockController.timeoutTitle(timeout))")
-                    }
-                    .contentShape(Rectangle())
-                } footer: {
-                    Text("在 App 内无操作超过所选时间后锁定。切回 App 时也会检查是否已超时。")
-                }
 
-                Section {
-                    NavigationLink {
-                        GroupSettingsView()
-                    } label: {
-                        Label("分组设置", systemImage: "folder")
-                    }
-                } footer: {
-                    Text("维护分组。密码编辑时可直接下拉选择。")
-                }
+                        SettingsDivider()
 
-                Section {
-                    Button("导出备份") {
-                        activeSheet = .export
-                        session.registerActivity()
-                    }
-                    .contentShape(Rectangle())
-                    Button("导入备份") {
-                        activeSheet = .import
-                        session.registerActivity()
-                    }
-                    .contentShape(Rectangle())
-                } footer: {
-                    Text("换机时：旧机导出 .vault，通过隔空投送或文件发送到新机，再在新机导入。不会自动联网迁移。")
-                }
+                        NavigationLink {
+                            AppearanceSelectionView(selection: $appearanceRawValue)
+                        } label: {
+                            SettingsNavigationRow(
+                                title: "外观",
+                                systemImage: "circle.lefthalf.filled",
+                                tint: .purple,
+                                value: selectedAppearanceTitle
+                            )
+                        }
+                        .buttonStyle(SettingsPressButtonStyle())
 
-                Section {
-                    Button("删除本机全部密码", role: .destructive) {
+                        SettingsDivider()
+
+                        NavigationLink {
+                            GroupSettingsView()
+                        } label: {
+                            SettingsNavigationRow(
+                                title: "分组设置",
+                                systemImage: "folder.fill",
+                                tint: .blue
+                            )
+                        }
+                        .buttonStyle(SettingsPressButtonStyle())
+                    }
+
+                    SettingsCard(
+                        title: "备份与迁移",
+                        footer: "导出加密的 .vault 文件，再通过隔空投送或“文件”导入新 iPhone。"
+                    ) {
+                        Button {
+                            activeSheet = .export
+                            session.registerActivity()
+                        } label: {
+                            SettingsNavigationRow(
+                                title: "导出备份",
+                                systemImage: "square.and.arrow.up.fill",
+                                tint: .blue,
+                                showsChevron: false
+                            )
+                        }
+                        .buttonStyle(SettingsPressButtonStyle())
+
+                        SettingsDivider()
+
+                        Button {
+                            activeSheet = .import
+                            session.registerActivity()
+                        } label: {
+                            SettingsNavigationRow(
+                                title: "导入备份",
+                                systemImage: "square.and.arrow.down.fill",
+                                tint: .teal,
+                                showsChevron: false
+                            )
+                        }
+                        .buttonStyle(SettingsPressButtonStyle())
+                    }
+
+                    SettingsCard(title: "隐私") {
+                        SettingsNavigationRow(
+                            title: "网络连接",
+                            systemImage: "wifi.slash",
+                            tint: .green,
+                            value: "不连接",
+                            showsChevron: false
+                        )
+                    }
+
+                    Button(role: .destructive) {
                         showingReset = true
-                    }
-                } footer: {
-                    Text("只删除这台 iPhone 上的数据。无法撤销。")
-                }
-
-                Section {
-                    LabeledContent("网络", value: "不连接")
-                } footer: {
-                    Text("密码只存在这台 iPhone 上。")
-                }
-
-                if let statusMessage {
-                    Section {
-                        Text(statusMessage)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
+                    } label: {
+                        Label("删除本机全部密码", systemImage: "trash.fill")
+                            .font(.body.weight(.semibold))
                             .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(SettingsPressButtonStyle())
+
+                    if let statusMessage {
+                        SettingsMessage(text: statusMessage, tint: .green, systemImage: "checkmark.circle.fill")
+                    }
+
+                    if let errorMessage {
+                        SettingsMessage(text: errorMessage, tint: .red, systemImage: "exclamationmark.triangle.fill")
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 6)
+                .padding(.bottom, 120)
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("我的")
         }
         .sheet(isPresented: $showingAutoLockPicker) {
@@ -155,6 +215,52 @@ struct MineView: View {
         .onChange(of: timeout) { _, value in
             session.autoLock.timeout = value
             session.registerActivity()
+        }
+    }
+
+    private var selectedAppearanceTitle: String {
+        AppAppearance(rawValue: appearanceRawValue)?.title ?? AppAppearance.system.title
+    }
+
+    private var isProtected: Bool {
+        session.isAppPasswordEnabled || session.isFaceIDEnabled
+    }
+
+    private var protectionSummary: some View {
+        HStack(spacing: 16) {
+            Image(systemName: isProtected ? "lock.shield.fill" : "exclamationmark.shield.fill")
+                .font(.system(size: 27, weight: .semibold))
+                .foregroundStyle(isProtected ? Color.green : Color.orange)
+                .frame(width: 56, height: 56)
+                .background(
+                    (isProtected ? Color.green : Color.orange).opacity(0.13),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(isProtected ? "本机保护已开启" : "本机保护未开启")
+                    .font(.headline)
+                Text("密码不会上传，只保存在这台 iPhone。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 4)
+        }
+        .padding(18)
+        .background(
+            Color(uiColor: .secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay(alignment: .topTrailing) {
+            Text("仅本机")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.green)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Color.green.opacity(0.12), in: Capsule())
+                .padding(12)
         }
     }
 
@@ -261,6 +367,174 @@ struct MineView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+private struct SettingsCard<Content: View>: View {
+    let title: String
+    let footer: String?
+    private let content: Content
+
+    init(
+        title: String,
+        footer: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.footer = footer
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Text(title)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+
+            VStack(spacing: 0) {
+                content
+            }
+            .background(
+                Color(uiColor: .secondarySystemGroupedBackground),
+                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+            }
+
+            if let footer {
+                Text(footer)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SettingsLeadingLabel: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 13) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 34, height: 34)
+                .background(tint.opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.primary)
+        }
+    }
+}
+
+private struct SettingsNavigationRow: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    var value: String? = nil
+    var showsChevron = true
+
+    var body: some View {
+        HStack(spacing: 14) {
+            SettingsLeadingLabel(title: title, systemImage: systemImage, tint: tint)
+
+            Spacer(minLength: 12)
+
+            if let value {
+                Text(value)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct SettingsDivider: View {
+    var body: some View {
+        Divider()
+            .padding(.leading, 62)
+    }
+}
+
+private struct SettingsMessage: View {
+    let text: String
+    let tint: Color
+    let systemImage: String
+
+    var body: some View {
+        Label(text, systemImage: systemImage)
+            .font(.subheadline)
+            .foregroundStyle(tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+private struct SettingsPressButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.78 : 1)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.12),
+                value: configuration.isPressed
+            )
+    }
+}
+
+private struct AppearanceSelectionView: View {
+    @Binding var selection: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(AppAppearance.allCases) { appearance in
+                    Button {
+                        selection = appearance.rawValue
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Label(appearance.title, systemImage: appearance.systemImage)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if selection == appearance.rawValue {
+                                Image(systemName: "checkmark")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                }
+            } footer: {
+                Text("跟随系统会随 iPhone 的外观设置自动切换。")
+            }
+        }
+        .navigationTitle("外观")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
